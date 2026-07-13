@@ -1,88 +1,93 @@
 import os, telebot, threading
 from telebot import types
 from flask import Flask
-from deep_translator import GoogleTranslator, SingleTranslator
+from deep_translator import GoogleTranslator
 
 TOKEN = "8853408009:AAH4bxqWOpPhMrstnC7-sYgga7VZP1xEE-0"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-user_modes = {}
+# Vaqtincha tarjima qilinadigan matnlarni saqlash uchun lug'at
+user_texts = {}
 
 @app.route('/')
 def home(): return "Tarjimon bot 24/7 faol!"
 
-def klaviatura():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=1)
-    btn1 = types.KeyboardButton("🤖 Автомат (Uzb 🔄 Rus)")
-    btn2 = types.KeyboardButton("🇷🇺 Русский ➡️ 🇺🇿 O'zbekcha")
-    btn3 = types.KeyboardButton("🇺🇿 O'zbekcha ➡️ 🇷🇺 Русский")
-    markup.add(btn1, btn2, btn3)
+# Har safar matn kelganda uning tagida chiqadigan til tanlash tugmalari
+def til_tanlash_klaviaturasi():
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn1 = types.InlineKeyboardButton("🇺🇿 O'zbekchaga / На узбекский", callback_data="to_uz")
+    btn2 = types.InlineKeyboardButton("🇷🇺 Ruschaga / На русский", callback_data="to_ru")
+    markup.add(btn1, btn2)
     return markup
 
 @bot.message_handler(commands=['start'])
 def st(m):
-    user_modes[m.from_user.id] = 0
     yo_riqnomi = (
-        "👋 *Salom! / Привет!*\n"
-        "Men professional Tarjimon botman. / Я бот-переводчик.\n\n"
-        "🇺🇿 *O'zbekcha:* Matn yuboring, men uni tarjima qilaman. "
-        "Rejimni o'zgartirish uchun pastdagi tugmalardan foydalaning.\n\n"
-        "🇷🇺 *Русский:* Отправьте текст для перевода. "
-        "Для изменения режима используйте кнопки ниже.\n\n"
-        "🤖 *Hozirgi rejim / Текущий режим:* Автомат"
+        "👋 *Salom! / Привет!*\n\n"
+        "🇺🇿 *O'zbekcha:* Menga istalgan matnni yuboring, so'ngra uni qaysi tilga tarjima qilishni tugma orqali tanlang!\n\n"
+        "🇷🇺 *Русский:* Отправьте мне любой текст, а затем выберите язык перевода с помощью кнопки!"
     )
-    bot.send_message(m.chat.id, yo_riqnomi, parse_mode="Markdown", reply_markup=klaviatura())
+    # Boshlang'ich menyu tugmalarini tozalab, faqat yo'riqnomani yuboramiz
+    bot.send_message(m.chat.id, yo_riqnomi, parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(func=lambda msg: True)
-def tx(m):
-    txt, uid = m.text.strip(), m.from_user.id
+def xabar_keldi(m):
+    uid = m.from_user.id
+    txt = m.text.strip()
     
-    if txt == "🤖 Автомат (Uzb 🔄 Rus)":
-        user_modes[uid] = 0
-        bot.send_message(m.chat.id, "🤖 *Автомат уlandi / Автоматический режим активен.*\n(Uzb 🔄 Rus)", parse_mode="Markdown")
-        return
-    elif txt == "🇷🇺 Русский ➡️ 🇺🇿 O'zbekcha":
-        user_modes[uid] = 1
-        bot.send_message(m.chat.id, "🇷🇺 ➡️ 🇺🇿 *Ruscha ➡️ O'zbekcha rejimi faol.*", parse_mode="Markdown")
-        return
-    elif txt == "🇺🇿 O'zbekcha ➡️ 🇷🇺 Русский":
-        user_modes[uid] = 2
-        bot.send_message(m.chat.id, "🇺🇿 ➡️ 🇷🇺 *O'zbekcha ➡️ Ruscha rejimi faol.*", parse_mode="Markdown")
+    # Kelgan matnni foydalanuvchi ID raqamiga biriktirib vaqtincha xotirada saqlaymiz
+    user_texts[uid] = txt
+    
+    bot.send_message(
+        m.chat.id, 
+        "❓ *Qaysi tilga tarjima qilamiz? / На какой язык перевести?*", 
+        parse_mode="Markdown", 
+        reply_markup=til_tanlash_klaviaturasi()
+    )
+
+# --- INLINE TUGMALAR BOSILGANDA ISHLAYDIGAN QISM ---
+@bot.callback_query_handler(func=lambda call: True)
+def callback_boshqar(call):
+    uid = call.from_user.id
+    chat_id = call.message.chat.id
+    msg_id = call.message.message_id
+    
+    # Agar foydalanuvchi yozgan matn xotirada saqlanmagan bo'lsa
+    if uid not in user_texts:
+        bot.answer_callback_query(call.id, "❌ Matn topilmadi. Qaytadan yuboring. / Текст не найден.")
+        bot.delete_message(chat_id, msg_id)
         return
 
-    if uid not in user_modes:
-        user_modes[uid] = 0
+    txt = user_texts[uid]
 
     try:
-        # 1-FUNKSIYA: AVTOMATIK TARJIMA (MUTLOQ XATOSIZ TIZIM)
-        if user_modes[uid] == 0:
-            # Google tizimi orqali matn qaysi tilda ekanligini aniqlaymiz
-            aniqlangan_til = SingleTranslator().detect_language(txt)
-            
-            # Agar yozilgan matn rus tilida bo'lsa
-            if aniqlangan_til == 'ru':
-                tarjima = GoogleTranslator(source='ru', target='uz').translate(txt)
-                bayroq = "🇺🇿 *O'zbekcha tarjimasi:*\n\n"
-            # Agar o'zbek tilida yoki boshqa har qanday tilda bo'lsa ruschaga o'g'iradi
-            else:
-                tarjima = GoogleTranslator(source='uz', target='ru').translate(txt)
-                bayroq = "🇷🇺 *Перевод на русский:*\n\n"
-
-        # 2-FUNKSIYA: RUS ➡️ UZB
-        elif user_modes[uid] == 1:
-            tarjima = GoogleTranslator(source='ru', target='uz').translate(txt)
+        # Foydalanuvchi O'zbekchaga tarjima qilishni tanlasa
+        if call.data == "to_uz":
+            bot.answer_callback_query(call.id, "Tarjima qilinmoqda...")
+            tarjima = GoogleTranslator(source='auto', target='uz').translate(txt)
             bayroq = "🇺🇿 *O'zbekcha tarjimasi:*\n\n"
-
-        # 3-FUNKSIYA: UZB ➡️ RUS
-        elif user_modes[uid] == 2:
-            tarjima = GoogleTranslator(source='uz', target='ru').translate(txt)
+            
+        # Foydalanuvchi Ruschaga tarjima qilishni tanlasa
+        elif call.data == "to_ru":
+            bot.answer_callback_query(call.id, "Перевод...")
+            tarjima = GoogleTranslator(source='auto', target='ru').translate(txt)
             bayroq = "🇷🇺 *Перевод на русский:*\n\n"
 
-        bot.send_message(m.chat.id, f"{bayroq}{tarjima}", parse_mode="Markdown")
+        # Savol bergan tugmali xabarni to'g'ridan-to'g'ri tayyor tarjimaga o'zgartiramiz
+        bot.edit_message_text(
+            chat_id=chat_id, 
+            message_id=msg_id, 
+            text=f"{bayroq}{tarjima}", 
+            parse_mode="Markdown"
+        )
 
     except Exception as e:
-        bot.send_message(m.chat.id, "❌ Ошибка в переводе. / Tarjimada xatolik yuz berdi.")
+        bot.edit_message_text(
+            chat_id=chat_id, 
+            message_id=msg_id, 
+            text="❌ Ошибка в переводе. / Tarjimada xatolik yuz berdi."
+        )
 
 if __name__ == "__main__":
     bot_thread = threading.Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10))
