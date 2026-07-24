@@ -1,17 +1,21 @@
-import os, telebot, threading
+import os
+import telebot
+import threading
 from telebot import types
 from flask import Flask
 from deep_translator import GoogleTranslator
 
-TOKEN = "8853408009:"8853408009:AAFw9F9o2PbHwfDYH8WQiJVZfMNcV3Y22U0"
+# TOʻGʻRILANGAN TOKEN: Ortiqcha qoʻshtirnoq va raqamlar olib tashlandi
+TOKEN = "8853408009:AAFw9F9o2PbHwfDYH8WQiJVZfMNcV3Y22U0"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
-# Vaqtincha tarjima qilinadigan matnlarni saqlash uchun lug'at
+# Vaqtincha tarjima qilinadigan matnlerns saqlash uchun lug'at
 user_texts = {}
 
 @app.route('/')
-def home(): return "Tarjimon bot 24/7 faol!"
+def home(): 
+    return "Tarjimon bot 24/7 faol!"
 
 # Har safar matn kelganda uning tagida chiqadigan til tanlash tugmalari
 def til_tanlash_klaviaturasi():
@@ -28,7 +32,6 @@ def st(m):
         "🇺🇿 *O'zbekcha:* Menga istalgan matnni yuboring, so'ngra uni qaysi tilga tarjima qilishni tugma orqali tanlang!\n\n"
         "🇷🇺 *Русский:* Отправьте мне любой текст, а затем выберите язык перевода с помощью кнопки!"
     )
-    # Boshlang'ich menyu tugmalarini tozalab, faqat yo'riqnomani yuboramiz
     bot.send_message(m.chat.id, yo_riqnomi, parse_mode="Markdown", reply_markup=types.ReplyKeyboardRemove())
 
 @bot.message_handler(func=lambda msg: True)
@@ -36,7 +39,6 @@ def xabar_keldi(m):
     uid = m.from_user.id
     txt = m.text.strip()
     
-    # Kelgan matnni foydalanuvchi ID raqamiga biriktirib vaqtincha xotirada saqlaymiz
     user_texts[uid] = txt
     
     bot.send_message(
@@ -53,7 +55,6 @@ def callback_boshqar(call):
     chat_id = call.message.chat.id
     msg_id = call.message.message_id
     
-    # Agar foydalanuvchi yozgan matn xotirada saqlanmagan bo'lsa
     if uid not in user_texts:
         bot.answer_callback_query(call.id, "❌ Matn topilmadi. Qaytadan yuboring. / Текст не найден.")
         bot.delete_message(chat_id, msg_id)
@@ -62,19 +63,16 @@ def callback_boshqar(call):
     txt = user_texts[uid]
 
     try:
-        # Foydalanuvchi O'zbekchaga tarjima qilishni tanlasa
         if call.data == "to_uz":
             bot.answer_callback_query(call.id, "Tarjima qilinmoqda...")
             tarjima = GoogleTranslator(source='auto', target='uz').translate(txt)
             bayroq = "🇺🇿 *O'zbekcha tarjimasi:*\n\n"
             
-        # Foydalanuvchi Ruschaga tarjima qilishni tanlasa
         elif call.data == "to_ru":
             bot.answer_callback_query(call.id, "Перевод...")
             tarjima = GoogleTranslator(source='auto', target='ru').translate(txt)
             bayroq = "🇷🇺 *Перевод на русский:*\n\n"
 
-        # Savol bergan tugmali xabarni to'g'ridan-to'g'ri tayyor tarjimaga o'zgartiramiz
         bot.edit_message_text(
             chat_id=chat_id, 
             message_id=msg_id, 
@@ -89,8 +87,11 @@ def callback_boshqar(call):
             text="❌ Ошибка в переводе. / Tarjimada xatolik yuz berdi."
         )
 
+# Render-da barqaror ishlashi uchun tuzatilgan ishga tushirish qismi
 if __name__ == "__main__":
-    bot_thread = threading.Thread(target=lambda: bot.infinity_polling(timeout=20, long_polling_timeout=10))
-    bot_thread.daemon = True
-    bot_thread.start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    # Botni alohida oqimda (Thread) xavfsiz ishga tushiramiz
+    threading.Thread(target=bot.infinity_polling, kwargs={"skip_pending": True}).start()
+    
+    # Flask portini Render muhitidan olamiz
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
