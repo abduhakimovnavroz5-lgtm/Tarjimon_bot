@@ -3,7 +3,7 @@ from telebot import types
 from flask import Flask
 from deep_translator import GoogleTranslator
 
-TOKEN = "8853408009:AAH4bxqWOpPhMrstnC7-sYgga7VZP1xEE-0"
+TOKEN = "8853408009:"8853408009:AAFw9F9o2PbHwfDYH8WQiJVZfMNcV3Y22U0"
 bot = telebot.TeleBot(TOKEN)
 app = Flask(__name__)
 
